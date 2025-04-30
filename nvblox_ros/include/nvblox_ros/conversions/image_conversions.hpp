@@ -20,7 +20,7 @@
 
 #include <nvblox/nvblox.h>
 
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 
 #include <string>
 
