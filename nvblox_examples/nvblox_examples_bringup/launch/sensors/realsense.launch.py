@@ -39,11 +39,12 @@ def get_default_run_splitter_list(num_cameras: int) -> List[bool]:
 def get_camera_node(camera_name: str, config_file_path: str, serial_number: Optional[int] = None) -> ComposableNode:
     parameters = []
     parameters.append(config_file_path)
-    parameters.append({'camera_name': camera_name})
+    parameters.append({'camera_name': camera_name, 'pointcloud.enable': True})
     if serial_number:
         parameters.append({'serial_no': str(serial_number)})
     realsense_node = ComposableNode(
-        namespace=camera_name,
+        namespace="",
+        name=camera_name,
         package='realsense2_camera',
         plugin='realsense2_camera::RealSenseNodeFactory',
         parameters=parameters)
