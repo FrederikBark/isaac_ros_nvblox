@@ -1,4 +1,4 @@
 [submodule "nvblox_ros/nvblox_core"]
 	path = nvblox_ros/nvblox_core
-	url = git@github.com:FrederikBark/nvblox.git
+	url = https://github.com/FrederikBark/isaac_ros_nvblox.git
 	branch = ubuntu24
