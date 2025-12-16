@@ -22,10 +22,18 @@ import sys
 from ament_index_python.packages import get_resource
 from setuptools import setup
 
-ISAAC_ROS_COMMON_PATH = get_resource(
-    'isaac_ros_common_scripts_path',
-    'isaac_ros_common'
-)[0]
+try:
+    ISAAC_ROS_COMMON_PATH = get_resource(
+        'isaac_ros_common_scripts_path',
+        'isaac_ros_common'
+    )[0]
+except:
+    if "clean" in sys.argv:
+        print("isaac_ros_common package not found, skipping during clean up.")
+        sys.exit(0)
+    else:
+        print("ERROR isaac_ros_common package not found")
+        sys.exit(1)
 
 ISAAC_ROS_COMMON_VERSION_INFO = Path(ISAAC_ROS_COMMON_PATH) / 'isaac_ros_common-version-info.py'
 
