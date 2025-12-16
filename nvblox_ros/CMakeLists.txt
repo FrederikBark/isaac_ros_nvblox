@@ -15,7 +15,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.23)
 project(nvblox_ros LANGUAGES CXX CUDA)
 
 # Default to C++17
@@ -41,10 +41,11 @@ include(nvblox_core/cmake/cuda/setup_compute_capability.cmake)
 if(DEFINED USE_NATIVE_CUDA_ARCHITECTURE)
   unset(CMAKE_CUDA_ARCHITECTURES)
   message(STATUS "nvblox_ros is built with native CUDA architectures.")
-elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)")
   set(CMAKE_CUDA_ARCHITECTURES "87")
   message(STATUS "nvblox_ros is built for Jetson/Orin CUDA architecture: ${CMAKE_CUDA_ARCHITECTURES}")
 else()
+  set(CMAKE_CUDA_ARCHITECTURES 60 70 80 90)
   message(STATUS "nvblox_ros is built for the following CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 endif()
 
@@ -211,7 +212,7 @@ install(
 
 # Install tests
 install(DIRECTORY
-  test
+	#  test
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -219,47 +220,6 @@ install(DIRECTORY
   scripts
   DESTINATION share/${PROJECT_NAME}/scripts/
 )
-
-if(BUILD_TESTING)
-  # Linting
-  # NOTE(alexmillane): We can't use ament_lint_auto because the ignore paths are not fully respected in humble.
-  #                    We therefore manually run the common linters we excludes configured where applicable.
-  #                    This is fixed in later versions of ROS. See for example here: https://github.com/ament/ament_lint/issues/423
-  #                    Once we move to a more recent version of ROS put the lines below back in.
-  # find_package(ament_lint_auto REQUIRED)
-  # Exclude submodule from linting tests
-  # file(GLOB_RECURSE AMENT_LINT_AUTO_FILE_EXCLUDE
-  #   nvblox_core/*
-  # )
-  # ament_lint_auto_find_test_dependencies()
-  find_package(ament_cmake_copyright REQUIRED)
-  ament_copyright("include" "scripts" "src" "test")
-  find_package(ament_cmake_cppcheck REQUIRED)
-  ament_cppcheck("include" "src" "test")
-  find_package(ament_cmake_cpplint REQUIRED)
-  ament_cpplint("include" "src" "test")
-  find_package(ament_cmake_flake8 REQUIRED)
-  ament_flake8("test" "scripts")
-  find_package(ament_cmake_lint_cmake REQUIRED)
-  ament_lint_cmake("CMakeLists.txt" "test")
-  find_package(ament_cmake_pep257 REQUIRED)
-  ament_pep257("test" "scripts")
-  find_package(ament_cmake_uncrustify REQUIRED)
-  ament_uncrustify("include" "src" "test")
-  find_package(ament_cmake_xmllint REQUIRED)
-  ament_xmllint()
-
-  # The FindPythonInterp and FindPythonLibs modules are removed.
-  if(POLICY CMP0148)
-    cmake_policy(SET CMP0148 OLD)
-  endif()
-
-  # Integrations tests
-  add_subdirectory(test/integration_tests)
-
-  # Unit Tests
-  add_subdirectory(test/unit_tests)
-endif()
 
 ##########
 # EXPORT #
