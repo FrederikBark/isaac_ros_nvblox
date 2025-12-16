@@ -16,6 +16,22 @@
 # SPDX-License-Identifier: Apache-2.0
 
 cmake_minimum_required(VERSION 3.23)
+#include(nvblox_core/cmake/cuda/setup_compute_capability.cmake)
+
+# Default behavior is to build for all supported CUDA architectures. In order to improve build
+# speed we can select to build only for the native architecture by using
+#    colcon build --cmake-args "-DUSE_NATIVE_CUDA_ARCHITECTURE=1"
+# Then the core lib will determine the current cuda architecture for us.
+if(DEFINED USE_NATIVE_CUDA_ARCHITECTURE)
+  unset(CMAKE_CUDA_ARCHITECTURES)
+  message(STATUS "nvblox_ros is built with native CUDA architectures.")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)")
+  set(CMAKE_CUDA_ARCHITECTURES "87")
+  message(STATUS "nvblox_ros is built for Jetson/Orin CUDA architecture: ${CMAKE_CUDA_ARCHITECTURES}")
+else()
+  set(CMAKE_CUDA_ARCHITECTURES 60 70 80 90)
+  message(STATUS "nvblox_ros is built for the following CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+endif()
 project(nvblox_ros LANGUAGES CXX CUDA)
 
 # Default to C++17
@@ -32,22 +48,7 @@ message( STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}" )
 # Setup dependencies. Note that will also setup cuda architecture flags in CMAKE_CUDA_ARCHITECTURES
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
-include(nvblox_core/cmake/cuda/setup_compute_capability.cmake)
 
-# Default behavior is to build for all supported CUDA architectures. In order to improve build
-# speed we can select to build only for the native architecture by using
-#    colcon build --cmake-args "-DUSE_NATIVE_CUDA_ARCHITECTURE=1"
-# Then the core lib will determine the current cuda architecture for us.
-if(DEFINED USE_NATIVE_CUDA_ARCHITECTURE)
-  unset(CMAKE_CUDA_ARCHITECTURES)
-  message(STATUS "nvblox_ros is built with native CUDA architectures.")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)")
-  set(CMAKE_CUDA_ARCHITECTURES "87")
-  message(STATUS "nvblox_ros is built for Jetson/Orin CUDA architecture: ${CMAKE_CUDA_ARCHITECTURES}")
-else()
-  set(CMAKE_CUDA_ARCHITECTURES 60 70 80 90)
-  message(STATUS "nvblox_ros is built for the following CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
-endif()
 
 
 # Don't build the pytorch wrapper
