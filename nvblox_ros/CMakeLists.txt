@@ -16,6 +16,31 @@
 # SPDX-License-Identifier: Apache-2.0
 
 cmake_minimum_required(VERSION 3.23)
+project(nvblox_ros LANGUAGES CXX CUDA)
+
+# Default to C++17
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
+
+set(JETSON_ROOTFS "$ENV{HOME}/jetson-rootfs")
+
+# Include directories from Jetson rootfs
+include_directories(
+    ${JETSON_ROOTFS}/usr/include
+    ${JETSON_ROOTFS}/usr/include/aarch64-linux-gnu
+    ${JETSON_ROOTFS}/opt/nvidia/include
+)
+
+# Default to release build
+if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
+  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+endif()
+message( STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}" )
+
+# Setup dependencies. Note that will also setup cuda architecture flags in CMAKE_CUDA_ARCHITECTURES
+find_package(ament_cmake_auto REQUIRED)
+ament_auto_find_build_dependencies()
 #include(nvblox_core/cmake/cuda/setup_compute_capability.cmake)
 
 # Default behavior is to build for all supported CUDA architectures. In order to improve build
@@ -32,23 +57,6 @@ else()
   set(CMAKE_CUDA_ARCHITECTURES 60 70 80 90)
   message(STATUS "nvblox_ros is built for the following CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 endif()
-project(nvblox_ros LANGUAGES CXX CUDA)
-
-# Default to C++17
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-endif()
-
-# Default to release build
-if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
-  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-endif()
-message( STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}" )
-
-# Setup dependencies. Note that will also setup cuda architecture flags in CMAKE_CUDA_ARCHITECTURES
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
-
 
 
 # Don't build the pytorch wrapper
