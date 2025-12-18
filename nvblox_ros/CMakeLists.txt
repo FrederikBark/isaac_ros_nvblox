@@ -23,14 +23,13 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
 endif()
 
-set(JETSON_ROOTFS "$ENV{HOME}/jetson-rootfs")
+set(JETSON_ROOTFS "/opt/jetson-rootfs")
 
 # Include directories from Jetson rootfs
-include_directories(
-    ${JETSON_ROOTFS}/usr/include
-    ${JETSON_ROOTFS}/usr/include/aarch64-linux-gnu
-    ${JETSON_ROOTFS}/opt/nvidia/include
+link_directories(
+    ${JETSON_ROOTFS}/usr/lib/aarch64-linux-gnu
 )
+
 
 # Default to release build
 if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
