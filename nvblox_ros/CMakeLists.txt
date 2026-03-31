@@ -53,7 +53,7 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)")
   set(CMAKE_CUDA_ARCHITECTURES "87")
   message(STATUS "nvblox_ros is built for Jetson/Orin CUDA architecture: ${CMAKE_CUDA_ARCHITECTURES}")
 else()
-  set(CMAKE_CUDA_ARCHITECTURES 60 70 80 90)
+  set(CMAKE_CUDA_ARCHITECTURES 50 60 70 80 90)
   message(STATUS "nvblox_ros is built for the following CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 endif()
 
