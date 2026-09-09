@@ -20,6 +20,7 @@
 #include <cstring>
 
 #include <nvblox/core/types.h>
+#include <nvblox/core/internal/error_check.h>
 #include <nvblox/map/unified_3d_grid.h>
 #include <nvblox/map/voxels.h>
 #include <nvblox/map/internal/cuda/impl/layer_to_3d_grid_impl.cuh>

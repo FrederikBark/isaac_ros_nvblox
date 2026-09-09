@@ -223,7 +223,7 @@ void NvbloxNode::subscribeToTopics()
   // Create subscriber queues.
   depth_image_queue_ = std::make_unique<std::list<ImageTypeVariant>>();
   color_image_queue_ = std::make_unique<std::list<ImageTypeVariant>>();
-  pointcloud_queue_ = std::make_unique<std::list<sensor_msgs::msg::PointCloud2::ConstSharedPtr>>();
+  pointcloud_queue_ = std::make_unique<std::list<PointcloudMsg>>();
   esdf_service_queue_ = std::make_unique<std::list<EsdfServiceQueuedType>>();
   file_path_service_queue_ = std::make_unique<std::list<FilePathServiceQueuedType>>();
 
@@ -347,10 +347,15 @@ void NvbloxNode::subscribeToTopics()
   }
 
   if (params_.use_lidar) {
-    // Subscribe to pointclouds.
-    pointcloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-      "pointcloud", input_qos,
-      std::bind(&NvbloxNode::pointcloudCallback, this, std::placeholders::_1));
+    // Subscribe to pointclouds. One subscriber per lidar, all feeding the same queue.
+    for (int i = 0; i < params_.num_lidars; ++i) {
+      pointcloud_subs_.push_back(
+        create_subscription<sensor_msgs::msg::PointCloud2>(
+          kPointcloudTopicNames[i], input_qos,
+          [this, i](const sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud) {
+            pointcloudCallback(i, pointcloud);
+          }));
+    }
   }
 
   // Subscribe to transforms.
@@ -544,6 +549,7 @@ void NvbloxNode::colorImageCallback(
 }
 
 void NvbloxNode::pointcloudCallback(
+  const int lidar_index,
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud)
 {
   timing::Timer tick_timer("ros/pointcloud_callback");
@@ -555,7 +561,7 @@ void NvbloxNode::pointcloudCallback(
     nvblox::Time(now().nanoseconds()));
 
   pushOntoQueue(
-    kPointcloudQueueName, pointcloud, pointcloud_queue_,
+    kPointcloudQueueName, PointcloudMsg{lidar_index, pointcloud}, pointcloud_queue_,
     &pointcloud_queue_mutex_);
 }
 
@@ -725,9 +731,9 @@ void NvbloxNode::processColorQueue()
 
 void NvbloxNode::processPointcloudQueue()
 {
-  using PointcloudMsg = sensor_msgs::msg::PointCloud2::ConstSharedPtr;
-  auto message_ready = [this](const PointcloudMsg & msg) {
-      return this->canTransform(msg->header.frame_id, msg->header.stamp);
+  auto message_ready = [this](const PointcloudMsg & pointcloud_msg) {
+      return this->canTransform(
+        pointcloud_msg.msg->header.frame_id, pointcloud_msg.msg->header.stamp);
     };
   processQueue<PointcloudMsg>(
     pointcloud_queue_,          // NOLINT
@@ -1266,16 +1272,23 @@ bool NvbloxNode::processColorImage(const ImageTypeVariant & color_msg)
 }
 
 bool NvbloxNode::processLidarPointcloud(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pointcloud_ptr)
+  const PointcloudMsg & pointcloud_msg)
 {
   timing::Timer ros_lidar_timer("ros/lidar");
   timing::Timer transform_timer("ros/lidar/transform");
   timing::Rates::tick("ros/lidar");
 
-  // Check if the message is too soon, and if it is discard it
+  const int lidar_index = pointcloud_msg.lidar_index;
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pointcloud_ptr = pointcloud_msg.msg;
+
+  // Check if the message is too soon, and if it is discard it.
+  // The integration rate is maintained per lidar so that one lidar cannot starve the others.
   const rclcpp::Time pointcloud_timestamp = pointcloud_ptr->header.stamp;
+  if (integrate_lidar_last_times_.find(lidar_index) == integrate_lidar_last_times_.end()) {
+    integrate_lidar_last_times_[lidar_index] = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  }
   if (!shouldProcess(
-      pointcloud_timestamp, integrate_lidar_last_time_,
+      pointcloud_timestamp, integrate_lidar_last_times_[lidar_index],
       params_.integrate_lidar_rate_hz))
   {
     // To discard we indicate that the image was processed, without actually integrating it.
@@ -1301,17 +1314,19 @@ bool NvbloxNode::processLidarPointcloud(
 
   transform_timer.Stop();
 
-  // Create the LiDAR model. The method of creation depends on whether we have
-  // equal FoV above and below 0 elevation. This is specified through a param.
+  // Create the LiDAR model for the lidar this pointcloud originates from. The method of
+  // creation depends on whether we have equal FoV above and below 0 elevation. This is
+  // specified through a param.
+  const LidarIntrinsicsParams & lidar_intrinsics = params_.lidar_intrinsics.at(lidar_index);
   Lidar lidar =
-    (params_.use_non_equal_vertical_fov_lidar_params) ?
+    (lidar_intrinsics.use_non_equal_vertical_fov) ?
     Lidar(
-    params_.lidar_width, params_.lidar_height, params_.lidar_min_valid_range_m,
-    params_.min_angle_below_zero_elevation_rad,
-    params_.max_angle_above_zero_elevation_rad) :
+    lidar_intrinsics.width, lidar_intrinsics.height, lidar_intrinsics.min_valid_range_m,
+    lidar_intrinsics.min_angle_below_zero_elevation_rad,
+    lidar_intrinsics.max_angle_above_zero_elevation_rad) :
     Lidar(
-    params_.lidar_width, params_.lidar_height, params_.lidar_min_valid_range_m,
-    params_.lidar_vertical_fov_rad);
+    lidar_intrinsics.width, lidar_intrinsics.height, lidar_intrinsics.min_valid_range_m,
+    lidar_intrinsics.vertical_fov_rad);
 
   // We check that the pointcloud is consistent with this LiDAR model
   // NOTE(alexmillane): If the check fails we return true which indicates that
@@ -1321,9 +1336,11 @@ bool NvbloxNode::processLidarPointcloud(
   // intrisics model is only tested against a single pointcloud. This is because
   // the check is expensive to perform.
   if (!pointcloud_converter_.checkLidarPointcloud(pointcloud_ptr, lidar)) {
-    RCLCPP_ERROR_ONCE(
-      get_logger(), "LiDAR intrinsics are inconsistent with the received "
-      "pointcloud. Failing integration.");
+    RCLCPP_ERROR_STREAM_THROTTLE(
+      get_logger(), *get_clock(), kTimeBetweenDebugMessagesMs,
+      "LiDAR intrinsics of lidar " << lidar_index
+                                   << " are inconsistent with the received "
+                                      "pointcloud. Failing integration.");
     return true;
   }
 
@@ -1378,7 +1395,7 @@ bool NvbloxNode::processLidarPointcloud(
     nvblox::Time(pointcloud_timestamp.nanoseconds()),
     nvblox::Time(now().nanoseconds()));
   newest_integrated_depth_time_ = std::max(pointcloud_timestamp, newest_integrated_depth_time_);
-  integrate_lidar_last_time_ = pointcloud_timestamp;
+  integrate_lidar_last_times_[lidar_index] = pointcloud_timestamp;
   lidar_integration_timer.Stop();
 
   // Publish the depth frame created from the lidar pointcloud.

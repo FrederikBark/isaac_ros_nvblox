@@ -41,6 +41,23 @@ void testStringParam(rclcpp::Node * node, StringParam & param)
   EXPECT_EQ(from_ros, param.get());
 }
 
+// The lidar_<i>.* params default to the global lidar_* params, so an intrinsics entry
+// without overrides holds the global values.
+void expectIntrinsicsMatchGlobalParams(
+  const NvbloxNodeParams & params, const LidarIntrinsicsParams & lidar)
+{
+  EXPECT_EQ(lidar.width, params.lidar_width.get());
+  EXPECT_EQ(lidar.height, params.lidar_height.get());
+  EXPECT_EQ(lidar.vertical_fov_rad, params.lidar_vertical_fov_rad.get());
+  EXPECT_EQ(lidar.min_valid_range_m, params.lidar_min_valid_range_m.get());
+  EXPECT_EQ(
+    lidar.use_non_equal_vertical_fov, params.use_non_equal_vertical_fov_lidar_params.get());
+  EXPECT_EQ(
+    lidar.min_angle_below_zero_elevation_rad, params.min_angle_below_zero_elevation_rad.get());
+  EXPECT_EQ(
+    lidar.max_angle_above_zero_elevation_rad, params.max_angle_above_zero_elevation_rad.get());
+}
+
 void testParamSize(const int expected_param_size, const int actual_param_size)
 {
   if (actual_param_size != expected_param_size) {
@@ -75,7 +92,7 @@ TEST(BaseNodeParams, initialize) {
 }
 
 TEST(NvbloxNodeParams, initialize) {
-  constexpr size_t kExpectedParamSize = 2128;
+  constexpr size_t kExpectedParamSize = 2184;
   testParamSize(kExpectedParamSize, sizeof(NvbloxNodeParams));
 
   auto node = std::make_shared<rclcpp::Node>("node", rclcpp::NodeOptions());
@@ -108,6 +125,7 @@ TEST(NvbloxNodeParams, initialize) {
   testParam<int>(node.get(), params.tick_period_ms);
   testParam<int>(node.get(), params.print_statistics_on_console_period_ms);
   testParam<int>(node.get(), params.num_cameras);
+  testParam<int>(node.get(), params.num_lidars);
   testParam<int>(node.get(), params.lidar_width);
   testParam<int>(node.get(), params.lidar_height);
 
@@ -131,6 +149,50 @@ TEST(NvbloxNodeParams, initialize) {
   testParam<float>(node.get(), params.clear_map_outside_radius_rate_hz);
   testParam<float>(node.get(), params.esdf_and_gradients_unobserved_value);
   testParam<float>(node.get(), params.map_clearing_radius_m);
+
+  // Without overrides the single lidar mirrors the global lidar params.
+  ASSERT_EQ(static_cast<int>(params.lidar_intrinsics.size()), params.num_lidars.get());
+  expectIntrinsicsMatchGlobalParams(params, params.lidar_intrinsics.front());
+}
+
+TEST(NvbloxNodeParams, perLidarIntrinsics) {
+  constexpr int kNumLidars = 2;
+  constexpr int kLidarOneWidth = 64;
+  constexpr float kLidarOneVerticalFovRad = 0.5F;
+
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("num_lidars", kNumLidars),
+      rclcpp::Parameter("lidar_1.width", kLidarOneWidth),
+      rclcpp::Parameter("lidar_1.vertical_fov_rad", kLidarOneVerticalFovRad),
+  });
+  auto node = std::make_shared<rclcpp::Node>("node", options);
+
+  NvbloxNodeParams params;
+  initializeNvbloxNodeParams(node.get(), &params);
+
+  ASSERT_EQ(params.num_lidars.get(), kNumLidars);
+  ASSERT_EQ(static_cast<int>(params.lidar_intrinsics.size()), kNumLidars);
+
+  // Lidar 0 is not overridden and falls back to the global lidar params.
+  expectIntrinsicsMatchGlobalParams(params, params.lidar_intrinsics[0]);
+
+  // Lidar 1 keeps the global defaults for everything that is not overridden.
+  const LidarIntrinsicsParams & lidar_one = params.lidar_intrinsics[1];
+  EXPECT_EQ(lidar_one.width, kLidarOneWidth);
+  EXPECT_EQ(lidar_one.vertical_fov_rad, kLidarOneVerticalFovRad);
+  EXPECT_EQ(lidar_one.height, params.lidar_height.get());
+  EXPECT_EQ(lidar_one.min_valid_range_m, params.lidar_min_valid_range_m.get());
+  EXPECT_EQ(
+    lidar_one.use_non_equal_vertical_fov,
+    params.use_non_equal_vertical_fov_lidar_params.get());
+  EXPECT_EQ(
+    lidar_one.min_angle_below_zero_elevation_rad,
+    params.min_angle_below_zero_elevation_rad.get());
+  EXPECT_EQ(
+    lidar_one.max_angle_above_zero_elevation_rad,
+    params.max_angle_above_zero_elevation_rad.get());
 }
 
 TEST(FuserNodeParams, initialize) {
