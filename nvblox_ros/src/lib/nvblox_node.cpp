@@ -1298,6 +1298,10 @@ bool NvbloxNode::processLidarPointcloud(
     // Discard images older then the last shape clearing (would reintegrate cleared shapes).
     return true;
   }
+  if (pointcloud_ptr->width * pointcloud_ptr->height == 0) {
+    // A scan without returns has nothing to integrate, and a CUDA launch over zero points fails.
+    return true;
+  }
   // Get the TF for this image.
   const std::string target_frame = pointcloud_ptr->header.frame_id;
   Transform T_L_C;
