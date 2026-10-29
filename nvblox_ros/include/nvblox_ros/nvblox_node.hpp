@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,9 +21,6 @@
 #include <nvblox/nvblox.h>
 
 #include <geometry_msgs/msg/vector3.h>
-#include <message_filters/subscriber.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/sync_policies/exact_time.h>
 
 #include <chrono>
 #include <list>
@@ -38,6 +35,11 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+
+#include <message_filters/subscriber.hpp>
+#include <message_filters/synchronizer.hpp>
+#include <message_filters/sync_policies/approximate_time.hpp>
+#include <message_filters/sync_policies/exact_time.hpp>
 
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -60,12 +62,8 @@
 #include "nvblox_ros/mapper_initialization.hpp"
 #include "nvblox_ros/transformer.hpp"
 #include "nvblox_ros/camera_cache.hpp"
-#include "nvblox_ros/nitros_types.hpp"
 #include "nvblox_ros/node_params.hpp"
 #include "nvblox_ros/service_request_task.hpp"
-
-#include "isaac_ros_nitros/types/nitros_type_message_filter_traits.hpp"
-#include "isaac_ros_nitros_image_type/nitros_image.hpp"
 
 namespace nvblox
 {
@@ -91,13 +89,13 @@ public:
   // Internal types for passing around images, their matching
   // segmentation masks, as well as the camera intrinsics.
   using ImageSegmentationMaskMsgTuple =
-    std::tuple<NitrosViewPtr,
+    std::tuple<sensor_msgs::msg::Image::ConstSharedPtr,
       sensor_msgs::msg::CameraInfo::ConstSharedPtr,
-      NitrosViewPtr,
+      sensor_msgs::msg::Image::ConstSharedPtr,
       sensor_msgs::msg::CameraInfo::ConstSharedPtr>;
 
   using ImageMsgTuple =
-    std::tuple<NitrosViewPtr,
+    std::tuple<sensor_msgs::msg::Image::ConstSharedPtr,
       sensor_msgs::msg::CameraInfo::ConstSharedPtr>;
 
   // Expresses the various types of Images that can be queued in the node for processing.
@@ -105,8 +103,9 @@ public:
 
   // Internal type of an image message with an *optional* mask.
   using ImageMsgOptionalMaskMsgTuple =
-    std::tuple<NitrosViewPtr, sensor_msgs::msg::CameraInfo::ConstSharedPtr,
-      std::optional<NitrosViewPtr>,
+    std::tuple<sensor_msgs::msg::Image::ConstSharedPtr,
+      sensor_msgs::msg::CameraInfo::ConstSharedPtr,
+      std::optional<sensor_msgs::msg::Image::ConstSharedPtr>,
       std::optional<sensor_msgs::msg::CameraInfo::ConstSharedPtr>>;
 
   // Named indices for the MsgTuple members.
@@ -125,20 +124,20 @@ public:
 
   // Callback functions. These just stick images in a queue.
   void depthPlusMaskImageCallback(
-    const NitrosViewPtr & depth_image,
+    const sensor_msgs::msg::Image::ConstSharedPtr & depth_image,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & depth_camera_info,
-    const NitrosViewPtr & seg_image,
+    const sensor_msgs::msg::Image::ConstSharedPtr & seg_image,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & seg_camera_info);
   void depthImageCallback(
-    const NitrosViewPtr & depth_image,
+    const sensor_msgs::msg::Image::ConstSharedPtr & depth_image,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & depth_camera_info);
   void colorPlusMaskImageCallback(
-    const NitrosViewPtr & color_image,
+    const sensor_msgs::msg::Image::ConstSharedPtr & color_image,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & color_camera_info,
-    const NitrosViewPtr & seg_image,
+    const sensor_msgs::msg::Image::ConstSharedPtr & seg_image,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & seg_camera_info);
   void colorImageCallback(
-    const NitrosViewPtr & color_image,
+    const sensor_msgs::msg::Image::ConstSharedPtr & color_image,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & color_camera_info);
   void pointcloudCallback(
     int lidar_index,
@@ -351,32 +350,32 @@ protected:
 
 
   /// Image + info subscribers
-  std::vector<std::shared_ptr<::message_filters::Subscriber<NitrosView>>>
+  std::vector<std::shared_ptr<::message_filters::Subscriber<sensor_msgs::msg::Image>>>
   depth_image_subs_;
   std::vector<std::shared_ptr<::message_filters::Subscriber<sensor_msgs::msg::CameraInfo>>>
   depth_camera_info_subs_;
-  std::vector<std::shared_ptr<::message_filters::Subscriber<NitrosView>>>
+  std::vector<std::shared_ptr<::message_filters::Subscriber<sensor_msgs::msg::Image>>>
   color_image_subs_;
   std::vector<std::shared_ptr<::message_filters::Subscriber<sensor_msgs::msg::CameraInfo>>>
   color_camera_info_subs_;
-  std::vector<std::shared_ptr<::message_filters::Subscriber<NitrosView>>>
+  std::vector<std::shared_ptr<::message_filters::Subscriber<sensor_msgs::msg::Image>>>
   segmentation_image_subs_;
   std::vector<std::shared_ptr<::message_filters::Subscriber<sensor_msgs::msg::CameraInfo>>>
   segmentation_camera_info_subs_;
 
   // Sync Policies
   using image_mask_approx_policy = ::message_filters::sync_policies::ApproximateTime<
-    nvidia::isaac_ros::nitros::NitrosImage, sensor_msgs::msg::CameraInfo,
-    nvidia::isaac_ros::nitros::NitrosImage, sensor_msgs::msg::CameraInfo>;
+    sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo,
+    sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo>;
   using image_mask_approx_sync = ::message_filters::Synchronizer<image_mask_approx_policy>;
 
   using image_exact_policy = ::message_filters::sync_policies::ExactTime<
-    nvidia::isaac_ros::nitros::NitrosImage, sensor_msgs::msg::CameraInfo>;
+    sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo>;
   using image_exact_sync = ::message_filters::Synchronizer<image_exact_policy>;
 
   using image_mask_exact_policy = ::message_filters::sync_policies::ExactTime<
-    nvidia::isaac_ros::nitros::NitrosImage, sensor_msgs::msg::CameraInfo,
-    nvidia::isaac_ros::nitros::NitrosImage, sensor_msgs::msg::CameraInfo>;
+    sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo,
+    sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo>;
   using image_mask_exact_sync = ::message_filters::Synchronizer<image_mask_exact_policy>;
 
   std::vector<std::shared_ptr<image_mask_approx_sync>> timesync_depth_mask_;

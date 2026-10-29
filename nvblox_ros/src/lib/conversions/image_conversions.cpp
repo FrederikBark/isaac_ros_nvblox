@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 
 #include "nvblox_ros/conversions/image_conversions.hpp"
 #include "nvblox_ros/conversions/image_conversions_thrust.hpp"
+
+#include "cuda_buffer/cuda_buffer_api.hpp"
 
 namespace nvblox
 {
@@ -138,13 +140,13 @@ bool depthImageFromRosMessageAsync(
   }
 }
 
-bool depthImageFromNitrosViewAsync(
-  const NitrosView & image, DepthImage * depth_image,
+bool depthImageFromImageBufferAsync(
+  const sensor_msgs::msg::Image & image, DepthImage * depth_image,
   rclcpp::Logger logger, const CudaStream & cuda_stream)
 {
   CHECK_NOTNULL(depth_image);
 
-  auto read_handle = image.get_read_handle(cuda_stream);
+  auto read_handle = cuda_buffer_backend::from_input_buffer(image.data, cuda_stream);
   if (image.encoding == "32FC1") {
     return depthFromFloatHostOrDeviceAsync(
       reinterpret_cast<const float *>(read_handle.get_ptr()),
@@ -160,13 +162,13 @@ bool depthImageFromNitrosViewAsync(
   }
 }
 
-bool colorImageFromNitrosViewAsync(
-  const NitrosView & image, ColorImage * color_image,
+bool colorImageFromImageBufferAsync(
+  const sensor_msgs::msg::Image & image, ColorImage * color_image,
   rclcpp::Logger logger, const CudaStream & cuda_stream)
 {
   CHECK_NOTNULL(color_image);
 
-  auto read_handle = image.get_read_handle(cuda_stream);
+  auto read_handle = cuda_buffer_backend::from_input_buffer(image.data, cuda_stream);
   const std::string & encoding = image.encoding;
   if (encoding == "rgb8") {
     return rgbaFromDeviceAsync(
@@ -182,8 +184,8 @@ bool colorImageFromNitrosViewAsync(
   }
 }
 
-bool monoImageFromNitrosViewAsync(
-  const NitrosView & image, MonoImage * mono_image,
+bool monoImageFromImageBufferAsync(
+  const sensor_msgs::msg::Image & image, MonoImage * mono_image,
   rclcpp::Logger logger, const CudaStream & cuda_stream)
 {
   CHECK_NOTNULL(mono_image);
@@ -194,7 +196,7 @@ bool monoImageFromNitrosViewAsync(
     return false;
   }
 
-  auto read_handle = image.get_read_handle(cuda_stream);
+  auto read_handle = cuda_buffer_backend::from_input_buffer(image.data, cuda_stream);
   return monoFromIntDeviceAsync(
     reinterpret_cast<const uint8_t *>(read_handle.get_ptr()),
     image.height, image.width, mono_image, cuda_stream);

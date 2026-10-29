@@ -107,9 +107,14 @@ MultiRealsenseEmitterSynchronizerNode::MultiRealsenseEmitterSynchronizerNode(
   parameter_clients_.reserve(num_cameras_);
   emitter_syncs_.reserve(num_cameras_);
 
+  constexpr int kQueueSize = 10;
+  const std::string kDefaultQoS = "SYSTEM_DEFAULT";
+  const rclcpp::QoS input_qos = isaac_ros::common::AddQosParameter(*this, kDefaultQoS, "input_qos")
+    .keep_last(kQueueSize);
+
   for (int i = 0; i < num_cameras_; ++i) {
     const std::string topic_name = "/" + camera_names_[i] + "/infra1/metadata";
-    metadata_subs_.emplace_back(std::make_unique<MetadataSub>(this, topic_name));
+    metadata_subs_.emplace_back(std::make_unique<MetadataSub>(this, topic_name, input_qos));
     parameter_clients_.emplace_back(
       std::make_shared<rclcpp::AsyncParametersClient>(this, "/" + camera_names_[i]));
     RCLCPP_INFO(
@@ -117,7 +122,6 @@ MultiRealsenseEmitterSynchronizerNode::MultiRealsenseEmitterSynchronizerNode(
       topic_name.c_str(), camera_names_[i].c_str());
   }
 
-  constexpr int kQueueSize = 10;
   if (num_cameras_ == 1) {
     metadata_subs_[0]->registerCallback(
       [this](MetadataMsg::ConstSharedPtr msg) {
