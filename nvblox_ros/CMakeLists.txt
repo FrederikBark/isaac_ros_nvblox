@@ -15,10 +15,49 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.24)
+# Prefer NVIDIA's CUDA toolkit in /usr/local/cuda over the distro's nvidia-cuda-toolkit
+# (e.g. CUDA 12.4 on Ubuntu 26.04), which is found first via /usr/bin/nvcc and /usr/lib.
+if(EXISTS "/usr/local/cuda/bin/nvcc")
+  if(NOT DEFINED CMAKE_CUDA_COMPILER AND NOT DEFINED ENV{CUDACXX})
+    set(CMAKE_CUDA_COMPILER "/usr/local/cuda/bin/nvcc")
+  endif()
+  if(NOT DEFINED CUDAToolkit_ROOT AND NOT DEFINED ENV{CUDAToolkit_ROOT})
+    set(CUDAToolkit_ROOT "/usr/local/cuda")
+  endif()
+  if(NOT DEFINED CUDA_TOOLKIT_ROOT_DIR)
+    set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda" CACHE PATH "CUDA toolkit root")
+  endif()
+endif()
+
+# project() initializes CMAKE_CUDA_ARCHITECTURES to nvcc's default (sm_75 only, CMP0104),
+# so remember whether the user chose the architectures before calling it.
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT DEFINED ENV{CUDAARCHS})
+  set(NVBLOX_ROS_DEFAULT_CUDA_ARCHITECTURES TRUE)
+endif()
+
 # C is required because the linked rosidl typesupport imported targets
 # (via ${<pkg>_TARGETS}) propagate C compile features.
 project(nvblox_ros LANGUAGES C CXX CUDA)
+
+# By default only the GPU of the build machine is targeted. To build for all architectures
+# supported by Isaac ROS (set in isaac_ros_common), e.g. on a build server, use
+#    colcon build --cmake-args "-DBUILD_ALL_CUDA_ARCHITECTURES=ON"
+# An explicit -DCMAKE_CUDA_ARCHITECTURES=... always takes precedence.
+option(BUILD_ALL_CUDA_ARCHITECTURES
+  "Build for all Isaac ROS CUDA architectures instead of only the native GPU" OFF)
+if(NVBLOX_ROS_DEFAULT_CUDA_ARCHITECTURES)
+  unset(CMAKE_CUDA_ARCHITECTURES CACHE)
+  if(NOT BUILD_ALL_CUDA_ARCHITECTURES)
+    # Use the detected value rather than the "native" keyword, which only works as the sole list
+    # entry and nvblox appends architectures between targets.
+    if(NOT CMAKE_CUDA_ARCHITECTURES_NATIVE)
+      message(FATAL_ERROR "No CUDA-capable GPU found. Use -DBUILD_ALL_CUDA_ARCHITECTURES=ON "
+                          "or -DCMAKE_CUDA_ARCHITECTURES=XY to select the target architectures.")
+    endif()
+    set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_NATIVE})
+  endif()
+endif()
 
 # Default to release build
 if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
@@ -30,17 +69,7 @@ message( STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}" )
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 include(nvblox_core/cmake/cuda/setup_compute_capability.cmake)
-
-# Default behavior is to build for all supported CUDA architectures. In order to improve build
-# speed we can select to build only for the native architecture by using
-#    colcon build --cmake-args "-DUSE_NATIVE_CUDA_ARCHITECTURE=1"
-# Then the core lib will determine the current cuda architecture for us.
-if(DEFINED USE_NATIVE_CUDA_ARCHITECTURE)
-  unset(CMAKE_CUDA_ARCHITECTURES)
-  message(STATUS "nvblox_ros is built with native CUDA architectures.")
-else()
-  message(STATUS "nvblox_ros is built for the following CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
-endif()
+message(STATUS "nvblox_ros is built for the following CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 
 
 # Don't build the pytorch wrapper

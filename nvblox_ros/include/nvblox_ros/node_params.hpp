@@ -75,6 +75,12 @@ constexpr Param<int>::Description kNumCamerasParamDesc{
   "num_cameras", 1,
   "Number of cameras supported (number of subscribers created)"};
 
+constexpr Param<int>::Description kNumLidarsParamDesc{
+  "num_lidars", 1,
+  "Number of lidars supported (number of pointcloud subscribers created). Lidar 0 subscribes "
+  "to the ``pointcloud`` topic, lidar i>0 to ``pointcloud_<i>``. Per-lidar intrinsics can be "
+  "overridden with ``lidar_<i>.*`` parameters and default to the global ``lidar_*`` parameters."};
+
 constexpr Param<int>::Description kMaximumSensorMessageQueueLengthParamDesc{
   "maximum_input_queue_length", 10,
   "How many items to store in the input queues (depth, color, lidar, services) before deleting "
@@ -153,6 +159,22 @@ constexpr Param<bool>::Description kUseLidarMotionCompensationParamDesc{
   "If set to true, apply motion compensation to LiDAR scans."
   "This undistorts the scan by interpolating poses for each point based on "
   "its timestamp."};
+
+/// Maximum number of lidars supported (number of subscribers created).
+constexpr int kMaxNumLidars = 4;
+
+/// Intrinsics model of a single LiDAR. The global ``lidar_*`` parameters provide the
+/// defaults; per-lidar overrides are read from the ``lidar_<i>.*`` parameter namespace.
+struct LidarIntrinsicsParams
+{
+  int width{0};
+  int height{0};
+  float vertical_fov_rad{0.F};
+  float min_valid_range_m{0.F};
+  bool use_non_equal_vertical_fov{false};
+  float min_angle_below_zero_elevation_rad{0.F};
+  float max_angle_above_zero_elevation_rad{0.F};
+};
 
 // ======= VISUALIZATION PARAMS =======
 constexpr StringParam::Description kEsdfSliceBoundsVisualizationAttachmentFrameIdParamDesc{
@@ -363,8 +385,12 @@ public:
   Param<int> tick_period_ms{kTickPeriodMsParamDesc};
   Param<int> print_statistics_on_console_period_ms{kPrintStatisticsOnConsolePeriodMsParamDesc};
   Param<int> num_cameras{kNumCamerasParamDesc};
+  Param<int> num_lidars{kNumLidarsParamDesc};
   Param<int> lidar_width{kLidarWidthParamDesc};
   Param<int> lidar_height{kLidarHeightParamDesc};
+
+  /// Per-lidar intrinsics, one entry per lidar (indices match the pointcloud topics).
+  std::vector<LidarIntrinsicsParams> lidar_intrinsics;
 
   Param<float> lidar_vertical_fov_rad{kLidarVerticalFovRadParamDesc};
   Param<float> lidar_min_valid_range_m{kLidarMinRangeM};

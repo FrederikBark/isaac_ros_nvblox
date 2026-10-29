@@ -63,6 +63,30 @@ void initStringParam(
   }
 }
 
+// Declare a ROS parameter with a runtime-constructed name (used for per-lidar overrides,
+// where the parameter name contains the lidar index) and return its value.
+template<typename ParamType>
+ParamType declareIndexedParam(
+  rclcpp::Node * node, const std::string & name, const ParamType & default_value,
+  const char * help_string,
+  std::optional<nvblox::parameters::ParameterTreeNode *> tree = std::nullopt)
+{
+  rcl_interfaces::msg::ParameterDescriptor ros_desc;
+  ros_desc.description = help_string;
+
+  const ParamType value =
+    node->declare_parameter<ParamType>(name, default_value, ros_desc);
+
+  // Add to the tree, if requested
+  if (tree.has_value()) {
+    CHECK(tree.value()->children().has_value())
+      << "Declare parameter requires an initialized non-leaf ParameterTreeNode.";
+    tree.value()->children().value().push_back(
+      nvblox::parameters::ParameterTreeNode(name, value));
+  }
+  return value;
+}
+
 RosDatasetType dataset_type_from_string(const std::string & dataset_str, rclcpp::Node * node)
 {
   if (dataset_str == "3dmatch") {
@@ -149,6 +173,42 @@ void initializeNvbloxNodeParams(
   initParam<float>(node, &params->max_angle_above_zero_elevation_rad, parameter_tree);
   initParam<bool>(node, &params->use_lidar_motion_compensation, parameter_tree);
   initParam<bool>(node, &params->pointcloud2_timestamps_are_relative, parameter_tree);
+
+  // Per-lidar intrinsics. The lidar_<i>.* parameters default to the global lidar_*
+  // parameters, so setups where all lidars share one model only need to set num_lidars.
+  initParam<int>(node, &params->num_lidars, parameter_tree);
+  CHECK_GE(params->num_lidars.get(), 1);
+  CHECK_LE(params->num_lidars.get(), kMaxNumLidars);
+  params->lidar_intrinsics.clear();
+  for (int i = 0; i < params->num_lidars; ++i) {
+    const std::string prefix = "lidar_" + std::to_string(i) + ".";
+    LidarIntrinsicsParams lidar;
+    lidar.width = declareIndexedParam<int>(
+      node, prefix + "width", params->lidar_width, kLidarWidthParamDesc.help_string,
+      parameter_tree);
+    lidar.height = declareIndexedParam<int>(
+      node, prefix + "height", params->lidar_height, kLidarHeightParamDesc.help_string,
+      parameter_tree);
+    lidar.vertical_fov_rad = declareIndexedParam<float>(
+      node, prefix + "vertical_fov_rad", params->lidar_vertical_fov_rad,
+      kLidarVerticalFovRadParamDesc.help_string, parameter_tree);
+    lidar.min_valid_range_m = declareIndexedParam<float>(
+      node, prefix + "min_valid_range_m", params->lidar_min_valid_range_m,
+      kLidarMinRangeM.help_string, parameter_tree);
+    lidar.use_non_equal_vertical_fov = declareIndexedParam<bool>(
+      node, prefix + "use_non_equal_vertical_fov",
+      params->use_non_equal_vertical_fov_lidar_params,
+      kUseNonEqualVerticalFovLidarParamsParamDesc.help_string, parameter_tree);
+    lidar.min_angle_below_zero_elevation_rad = declareIndexedParam<float>(
+      node, prefix + "min_angle_below_zero_elevation_rad",
+      params->min_angle_below_zero_elevation_rad,
+      kMinAngleBelowZeroElevationRadParamDesc.help_string, parameter_tree);
+    lidar.max_angle_above_zero_elevation_rad = declareIndexedParam<float>(
+      node, prefix + "max_angle_above_zero_elevation_rad",
+      params->max_angle_above_zero_elevation_rad,
+      kMaxAngleAboveZeroElevationRadParamDesc.help_string, parameter_tree);
+    params->lidar_intrinsics.push_back(lidar);
+  }
   initParam<float>(node, &params->esdf_slice_bounds_visualization_side_length, parameter_tree);
   initParam<float>(
     node, &params->workspace_height_bounds_visualization_side_length,

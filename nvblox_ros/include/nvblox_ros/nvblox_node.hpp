@@ -114,6 +114,14 @@ public:
   static constexpr size_t kMsgTupleMaskIdx = 2;
   static constexpr size_t kMsgTupleMaskCameraInfoIdx = 3;
 
+  /// A lidar pointcloud message together with the index of the lidar it originates from.
+  /// The index is used to look up the intrinsics model of that lidar.
+  struct PointcloudMsg
+  {
+    int lidar_index;
+    sensor_msgs::msg::PointCloud2::ConstSharedPtr msg;
+  };
+
   // Callback functions. These just stick images in a queue.
   void depthPlusMaskImageCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr & depth_image,
@@ -132,6 +140,7 @@ public:
     const sensor_msgs::msg::Image::ConstSharedPtr & color_image,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & color_camera_info);
   void pointcloudCallback(
+    int lidar_index,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud);
 
   void savePly(
@@ -166,7 +175,7 @@ public:
   virtual bool processDepthImage(const ImageTypeVariant & depth_mask_msg);
   virtual bool processColorImage(const ImageTypeVariant & color_mask_msg);
   virtual bool processLidarPointcloud(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pointcloud_ptr);
+    const PointcloudMsg & pointcloud_msg);
 
   // Return true if the tf-tree contains a transform for the given frame_id and timestamp
   bool canTransform(const std::string & frame_id, const rclcpp::Time & timestamp);
@@ -326,6 +335,19 @@ protected:
     "camera_3/mask",
   };
 
+  /// Pointcloud topics to listen to. Lidar 0 keeps the legacy ``pointcloud`` topic name for
+  /// backward compatibility with single-lidar setups. All topics feed the same processing
+  /// queue.
+  static constexpr std::array<const char *,
+    kMaxNumLidars> kPointcloudTopicNames =
+  {
+    // Multi-lidar topics
+    "pointcloud",
+    "pointcloud_1",
+    "pointcloud_2",
+    "pointcloud_3",
+  };
+
 
   /// Image + info subscribers
   std::vector<std::shared_ptr<::message_filters::Subscriber<sensor_msgs::msg::Image>>>
@@ -362,9 +384,9 @@ protected:
   std::vector<std::shared_ptr<image_exact_sync>> timesync_color_;
 
 
-  // Pointcloud sub.
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr
-    pointcloud_sub_;
+  // Pointcloud subs (one per lidar).
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr>
+  pointcloud_subs_;
 
   // Optional transform subs.
   rclcpp::Subscription<geometry_msgs::msg::TransformStamped>::SharedPtr
@@ -443,7 +465,9 @@ protected:
   /// of the camera to the timestamp of the last image integrated from that camera.
   std::unordered_map<std::string, rclcpp::Time> integrate_depth_last_times_;
   std::unordered_map<std::string, rclcpp::Time> integrate_color_last_times_;
-  rclcpp::Time integrate_lidar_last_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  /// NOTE: Because we support multiple lidars, this maps the lidar index to the timestamp of
+  /// the last pointcloud integrated from that lidar.
+  std::unordered_map<int, rclcpp::Time> integrate_lidar_last_times_;
   rclcpp::Time update_mesh_last_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   rclcpp::Time update_esdf_last_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   rclcpp::Time publish_layer_last_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -500,7 +524,7 @@ protected:
       nvblox_msgs::srv::FilePath>>;
 
   // Input queues. Unique pointers are used to enable more flexibility when deallocating.
-  std::unique_ptr<std::list<sensor_msgs::msg::PointCloud2::ConstSharedPtr>> pointcloud_queue_;
+  std::unique_ptr<std::list<PointcloudMsg>> pointcloud_queue_;
   std::unique_ptr<std::list<EsdfServiceQueuedType>> esdf_service_queue_;
   std::unique_ptr<std::list<FilePathServiceQueuedType>> file_path_service_queue_;
   std::unique_ptr<std::list<ImageTypeVariant>> depth_image_queue_;

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.22.1)
 project(multi_realsense_emitter_synchronizer)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -22,16 +22,17 @@ add_library(
 target_include_directories(
   multi_realsense_emitter_synchronizer_component PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+  $<INSTALL_INTERFACE:include>
+  ${isaac_ros_common_INCLUDE_DIRS})
 
-ament_target_dependencies(
-  multi_realsense_emitter_synchronizer_component
-  rclcpp
-  rclcpp_components
-  realsense2_camera_msgs
-  message_filters
-  isaac_ros_common
-  nlohmann_json)
+target_link_libraries(
+  multi_realsense_emitter_synchronizer_component PUBLIC
+  rclcpp::rclcpp
+  rclcpp_components::component
+  ${realsense2_camera_msgs_TARGETS}
+  message_filters::message_filters
+  ${isaac_ros_common_LIBRARIES}
+  nlohmann_json::nlohmann_json)
 
 # Register the library as a component plugin
 rclcpp_components_register_nodes(
@@ -40,7 +41,7 @@ rclcpp_components_register_nodes(
 
 # Create a standalone executable
 add_executable(multi_realsense_emitter_synchronizer_node src/multi_realsense_emitter_synchronizer_main.cpp)
-target_link_libraries(multi_realsense_emitter_synchronizer_node multi_realsense_emitter_synchronizer_component)
+target_link_libraries(multi_realsense_emitter_synchronizer_node PRIVATE multi_realsense_emitter_synchronizer_component)
 
 # Install targets
 install(
@@ -64,8 +65,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_emitter_synchronizer
     test/test_emitter_synchronizer.cpp)
   if(TARGET test_emitter_synchronizer)
-    target_link_libraries(test_emitter_synchronizer multi_realsense_emitter_synchronizer_component)
-    ament_target_dependencies(test_emitter_synchronizer rclcpp rclcpp_components)
+    target_link_libraries(test_emitter_synchronizer
+      multi_realsense_emitter_synchronizer_component
+      rclcpp::rclcpp
+      rclcpp_components::component)
   endif()
 endif()
 

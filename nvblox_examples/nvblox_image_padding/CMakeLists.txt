@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.22.1)
 project(nvblox_image_padding)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -36,17 +36,18 @@ find_package(isaac_ros_common REQUIRED)
 add_library(${PROJECT_NAME}_lib SHARED
   src/image_padding_cropping_node.cpp
 )
-ament_target_dependencies(${PROJECT_NAME}_lib
-  rclcpp
-  rclcpp_components
-  sensor_msgs
-  cv_bridge
-  nvblox_ros_common
-  isaac_ros_common
+target_link_libraries(${PROJECT_NAME}_lib PUBLIC
+  rclcpp::rclcpp
+  rclcpp_components::component
+  ${sensor_msgs_TARGETS}
+  cv_bridge::cv_bridge
+  nvblox_ros_common::nvblox_ros_common_lib
+  ${isaac_ros_common_LIBRARIES}
 )
 target_include_directories(${PROJECT_NAME}_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+  $<INSTALL_INTERFACE:include>
+  ${isaac_ros_common_INCLUDE_DIRS})
 
 rclcpp_components_register_nodes(${PROJECT_NAME}_lib "nvblox::ImagePaddingCroppingNode")
 
@@ -56,7 +57,7 @@ rclcpp_components_register_nodes(${PROJECT_NAME}_lib "nvblox::ImagePaddingCroppi
 add_executable(image_padding_cropping_node
   src/image_padding_cropping_node_main.cpp
 )
-target_link_libraries(image_padding_cropping_node ${PROJECT_NAME}_lib)
+target_link_libraries(image_padding_cropping_node PRIVATE ${PROJECT_NAME}_lib)
 
 ###########
 # INSTALL #
