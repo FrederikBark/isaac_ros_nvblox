@@ -15,7 +15,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.22.1)
 project(nvblox_nav2)
 
 # Default to C++17
@@ -44,11 +44,11 @@ find_package(nav2_costmap_2d REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(nvblox_msgs REQUIRED)
 
-set(dep_pkgs
-    rclcpp
-    nav2_costmap_2d
-    pluginlib
-    nvblox_msgs
+set(dep_targets
+    rclcpp::rclcpp
+    nav2_costmap_2d::nav2_costmap_2d_core
+    pluginlib::pluginlib
+    ${nvblox_msgs_TARGETS}
 )
 
 # === Build ===
@@ -71,6 +71,6 @@ endif()
 
 # Install the plugin
 pluginlib_export_plugin_description_file(nav2_costmap_2d nvblox_costmap_layer.xml)
-ament_target_dependencies(${lib_name} ${dep_pkgs})
+target_link_libraries(${lib_name} PUBLIC ${dep_targets})
 
 ament_package()

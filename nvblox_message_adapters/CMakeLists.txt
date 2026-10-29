@@ -6,7 +6,7 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.22.1)
 project(nvblox_message_adapters)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -35,8 +35,10 @@ target_compile_features(nvblox_voxel_layer_adapter PUBLIC c_std_99 cxx_std_17)
 target_include_directories(nvblox_voxel_layer_adapter PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>"
+  ${isaac_ros_common_INCLUDE_DIRS}
 )
-ament_target_dependencies(nvblox_voxel_layer_adapter rclcpp isaac_ros_common nvblox_msgs)
+target_link_libraries(nvblox_voxel_layer_adapter PUBLIC
+  rclcpp::rclcpp ${isaac_ros_common_LIBRARIES} ${nvblox_msgs_TARGETS})
 
 
 ######## Main executable for Mesh representation
@@ -48,8 +50,10 @@ target_compile_features(nvblox_mesh_layer_adapter PUBLIC c_std_99 cxx_std_17)
 target_include_directories(nvblox_mesh_layer_adapter PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>"
+  ${isaac_ros_common_INCLUDE_DIRS}
 )
-ament_target_dependencies(nvblox_mesh_layer_adapter rclcpp isaac_ros_common nvblox_msgs)
+target_link_libraries(nvblox_mesh_layer_adapter PUBLIC
+  rclcpp::rclcpp ${isaac_ros_common_LIBRARIES} ${nvblox_msgs_TARGETS})
 
 ######### Install & Export
 include(GNUInstallDirs)
